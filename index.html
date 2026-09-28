@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="paper">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Riso Todo — a pretty little task ledger</title>
+  <meta name="description" content="Riso Todo is a small todo app built with plain HTML, CSS and JavaScript: priorities, due dates, tags, filters, drag-to-reorder and offline storage." />
+  <meta name="theme-color" content="#fbf4e8" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to the tasks</a>
+  <div class="backdrop" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand__mark" aria-hidden="true">&#10003;</span>
+      <div class="brand__text">
+        <h1 class="brand__name">Riso<span>Todo</span></h1>
+        <p class="brand__tagline">a pretty little task ledger</p>
+      </div>
+    </div>
+
+    <div class="topbar__actions">
+      <p class="today" id="todayLabel"></p>
+      <button class="icon-btn" id="themeToggle" type="button" aria-pressed="false" title="Switch between the paper and ink themes">
+        <span class="icon-btn__glyph" id="themeGlyph" aria-hidden="true">&#9790;</span>
+        <span class="icon-btn__text" id="themeText">Ink mode</span>
+      </button>
+    </div>
+  </header>
+
+  <main class="layout" id="main">
+    <!-- ============ Compose ============ -->
+    <section class="panel panel--compose" aria-labelledby="composeTitle">
+      <h2 class="panel__title" id="composeTitle"><span class="panel__glyph" aria-hidden="true">&#9998;</span> Add a task</h2>
+
+      <form class="compose" id="taskForm" novalidate autocomplete="off">
+        <div class="field">
+          <label class="field__label" for="taskTitle">What needs doing?</label>
+          <input class="input" id="taskTitle" name="title" type="text" maxlength="140"
+                 placeholder="e.g. Sketch the poster layout" data-testid="test-todo-input" />
+        </div>
+
+        <div class="field__row">
+          <div class="field">
+            <label class="field__label" for="taskDue">Due date</label>
+            <input class="input" id="taskDue" name="due" type="date" data-testid="test-todo-due-input" />
+          </div>
+          <div class="field">
+            <label class="field__label" for="taskPriority">Priority</label>
+            <select class="input" id="taskPriority" name="priority" data-testid="test-todo-priority-input">
+              <option value="low">Low</option>
+              <option value="medium" selected>Medium</option>
+              <option value="high">High</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="field__label" for="taskTags">Tags <span class="field__hint">comma separated</span></label>
+          <input class="input" id="taskTags" name="tags" type="text" maxlength="80"
+                 placeholder="design, deep work" data-testid="test-todo-tags-input" />
+        </div>
+
+        <p class="form-error" id="formError" role="alert" hidden></p>
+
+        <button class="btn btn--primary" type="submit" data-testid="test-todo-submit">
+          <span class="btn__glyph" aria-hidden="true">&#65291;</span> Add task
+        </button>
+      </form>
+
+      <ul class="shortcuts">
+        <li><kbd>/</kbd> jump to search</li>
+        <li><kbd>Enter</kbd> save</li>
+        <li><kbd>Esc</kbd> cancel edit</li>
+        <li><kbd>Alt</kbd> + <kbd>&#8593;</kbd><kbd>&#8595;</kbd> reorder</li>
+      </ul>
+    </section>
+    <!-- ============ Ledger ============ -->
+    <section class="panel panel--list" aria-labelledby="listTitle">
+      <div class="listhead">
+        <div class="listhead__text">
+          <h2 class="panel__title" id="listTitle"><span class="panel__glyph" aria-hidden="true">&#9745;</span> Today&rsquo;s ledger</h2>
+          <p class="listhead__sub" id="summaryText">No tasks yet</p>
+        </div>
+
+        <div class="progress" role="group" aria-label="Progress">
+          <div class="progress__track">
+            <div class="progress__fill" id="progressFill" style="width: 0%"></div>
+          </div>
+          <span class="progress__value" id="progressValue">0%</span>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <div class="search">
+          <span class="search__glyph" aria-hidden="true">&#9906;</span>
+          <label class="sr-only" for="searchInput">Search tasks by name or tag</label>
+          <input class="input input--search" id="searchInput" type="search" placeholder="Search tasks or tags&hellip;" />
+        </div>
+
+        <div class="segmented" id="filterGroup" role="group" aria-label="Filter tasks">
+          <button class="segmented__btn is-active" type="button" data-filter="all" aria-pressed="true">All</button>
+          <button class="segmented__btn" type="button" data-filter="active" aria-pressed="false">Active</button>
+          <button class="segmented__btn" type="button" data-filter="done" aria-pressed="false">Done</button>
+        </div>
+
+        <div class="toolbar__right">
+          <label class="sr-only" for="sortSelect">Sort tasks</label>
+          <select class="input input--compact" id="sortSelect">
+            <option value="manual">My order</option>
+            <option value="due">Due soonest</option>
+            <option value="priority">Priority</option>
+            <option value="created">Newest first</option>
+            <option value="alpha">A &rarr; Z</option>
+          </select>
+          <button class="btn btn--ghost" id="clearDoneBtn" type="button" data-testid="test-todo-clear-done">Clear done</button>
+        </div>
+      </div>
+
+      <ul class="tasks" id="taskList" aria-label="Your tasks"></ul>
+
+      <div class="empty" id="emptyState" hidden>
+        <div class="empty__art" aria-hidden="true">
+          <span class="empty__sun"></span>
+          <span class="empty__line"></span>
+        </div>
+        <h3 class="empty__title" id="emptyTitle">Nothing here yet</h3>
+        <p class="empty__text" id="emptyText">Add your first task on the left and watch this page fill up with tiny wins.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p>Plain HTML, CSS &amp; JavaScript &mdash; no libraries, no build step. Your tasks stay in this browser.</p>
+  </footer>
+
+  <div class="toast" id="toast" role="status" aria-live="polite">
+    <span class="toast__text" id="toastText"></span>
+    <button class="toast__btn" id="toastAction" type="button">Undo</button>
+  </div>
+
+  <p class="sr-only" id="liveRegion" role="status" aria-live="polite"></p>
+
+  <template id="taskTemplate">
+    <li class="task" draggable="false" data-testid="test-todo-card">
+      <span class="task__grip" aria-hidden="true" title="Drag to reorder">&#10495;</span>
+
+      <button class="task__check" type="button" role="checkbox" aria-checked="false"
+              data-action="toggle" data-testid="test-todo-complete-toggle">
+        <svg class="task__tick" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M4 12.5 9.6 18 20 6.6" fill="none" stroke="currentColor" stroke-width="3.2"
+                stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </button>
+
+      <div class="task__body">
+        <p class="task__title" data-testid="test-todo-title" tabindex="0" title="Double-click to edit"></p>
+        <ul class="task__tags" data-testid="test-todo-tags"></ul>
+        <div class="task__meta">
+          <span class="chip chip--prio" data-testid="test-todo-priority"></span>
+          <span class="chip chip--status" data-testid="test-todo-status"></span>
+          <span class="chip chip--due" data-testid="test-todo-due-date"></span>
+          <span class="chip chip--remaining" data-testid="test-todo-time-remaining"></span>
+          <span class="chip chip--overdue" data-testid="test-todo-overdue-indicator" hidden>overdue</span>
+        </div>
+      </div>
+
+      <div class="task__actions">
+        <button class="icon-btn icon-btn--sm" type="button" data-action="edit"
+                data-testid="test-todo-edit-button" title="Edit task" aria-label="Edit task">&#9998;</button>
+        <button class="icon-btn icon-btn--sm" type="button" data-action="delete"
+                data-testid="test-todo-delete-button" title="Delete task" aria-label="Delete task">&#10005;</button>
+      </div>
+    </li>
+  </template>
+
+  <script src="script.js"></script>
+
+  </main>
+</body>
+</html>
