@@ -9,9 +9,14 @@
   'use strict';
 
   var STORAGE_KEY = 'riso-todo.tasks.v1';
+  var NOTES_KEY = 'riso-todo.notes.v1';
   var THEME_KEY = 'riso-todo.theme';
+  var VIEW_KEY = 'riso-todo.view';
   var MAX_TITLE = 140;
   var MAX_TAGS = 6;
+  var MAX_NOTE_TITLE = 90;
+  var MAX_NOTE_BODY = 2000;
+  var NOTE_COLORS = ['yellow', 'blue', 'red', 'mint', 'violet'];
   var MS_DAY = 86400000;
 
   var PRIORITY_ORDER = { high: 0, medium: 1, low: 2 };
@@ -40,6 +45,26 @@
     themeGlyph: document.getElementById('themeGlyph'),
     themeText: document.getElementById('themeText'),
     todayLabel: document.getElementById('todayLabel'),
+    tabbar: document.getElementById('tabbar'),
+    tabTasks: document.getElementById('tabTasks'),
+    tabNotes: document.getElementById('tabNotes'),
+    tabTasksCount: document.getElementById('tabTasksCount'),
+    tabNotesCount: document.getElementById('tabNotesCount'),
+    viewTasks: document.getElementById('viewTasks'),
+    viewNotes: document.getElementById('viewNotes'),
+    noteForm: document.getElementById('noteForm'),
+    noteTitle: document.getElementById('noteTitle'),
+    noteBody: document.getElementById('noteBody'),
+    noteFormError: document.getElementById('noteFormError'),
+    noteList: document.getElementById('noteList'),
+    noteTemplate: document.getElementById('noteTemplate'),
+    noteSearch: document.getElementById('noteSearch'),
+    noteSort: document.getElementById('noteSortSelect'),
+    noteFilterGroup: document.getElementById('noteFilterGroup'),
+    notesSummary: document.getElementById('notesSummary'),
+    notesEmpty: document.getElementById('notesEmpty'),
+    notesEmptyTitle: document.getElementById('notesEmptyTitle'),
+    notesEmptyText: document.getElementById('notesEmptyText'),
     toast: document.getElementById('toast'),
     toastText: document.getElementById('toastText'),
     toastAction: document.getElementById('toastAction'),
@@ -47,10 +72,16 @@
   };
 
   var tasks = [];          // master list, order === "My order" sort
+  var notes = [];          // notes are independent of tasks
   var filter = 'all';      // all | active | done
   var query = '';
   var sort = 'manual';
+  var noteQuery = '';
+  var noteFilter = 'all';  // all | pinned
+  var noteSort = 'updated';
+  var currentView = 'tasks';
   var lastDeleted = null;  // { task, index } for the undo toast
+  var lastDeletedNote = null; // { note, index } for the undo toast
   var toastTimer = null;
   var dragId = null;
 
@@ -99,6 +130,51 @@
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
     } catch (err) {
       console.warn('Riso Todo: tasks could not be saved.', err);
+    }
+  }
+
+  function normalizeNote(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+
+    var title = typeof raw.title === 'string' ? raw.title.trim().slice(0, MAX_NOTE_TITLE) : '';
+    var body = typeof raw.body === 'string' ? raw.body.slice(0, MAX_NOTE_BODY) : '';
+    if (!title && !body.trim()) return null;
+
+    var created = typeof raw.createdAt === 'number' ? raw.createdAt : Date.now();
+    return {
+      id: typeof raw.id === 'string' && raw.id ? raw.id : uid(),
+      title: title,
+      body: body,
+      color: NOTE_COLORS.indexOf(raw.color) !== -1 ? raw.color : 'yellow',
+      pinned: Boolean(raw.pinned),
+      createdAt: created,
+      updatedAt: typeof raw.updatedAt === 'number' ? raw.updatedAt : created
+    };
+  }
+
+  function loadNotes() {
+    var raw = null;
+    try {
+      raw = window.localStorage.getItem(NOTES_KEY);
+    } catch (err) {
+      return;
+    }
+    if (!raw) return;
+    try {
+      var parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        notes = parsed.map(normalizeNote).filter(Boolean);
+      }
+    } catch (err) {
+      console.warn('Riso Todo: saved notes could not be read.', err);
+    }
+  }
+
+  function saveNotes() {
+    try {
+      window.localStorage.setItem(NOTES_KEY, JSON.stringify(notes));
+    } catch (err) {
+      console.warn('Riso Todo: notes could not be saved.', err);
     }
   }
 
@@ -297,6 +373,7 @@
     }
 
     el.clearDone.disabled = done === 0;
+    el.tabTasksCount.textContent = String(active);
 
     renderEmptyState(visible.length, total);
   }
@@ -758,7 +835,411 @@
     else applyTheme(prefersInk ? 'ink' : 'paper');
   }
 
+  /* ============================================================
+     Notes tab
+     ============================================================ */
+
+  function findNoteIndex(id) {
+    for (var i = 0; i < notes.length; i++) {
+      if (notes[i].id === id) return i;
+    }
+    return -1;
+  }
+
+  function findNote(id) {
+    var index = findNoteIndex(id);
+    return index === -1 ? null : notes[index];
+  }
+
+  function noteNode(id) {
+    var esc = window.CSS && window.CSS.escape ? window.CSS.escape(id) : id;
+    return el.noteList.querySelector('.note[data-id="' + esc + '"]');
+  }
+
+  /** Display title, falling back to the first line of the body. */
+  function noteTitle(note) {
+    if (note.title) return note.title;
+    var first = String(note.body || '').split('\n')[0].trim();
+    return first ? shorten(first, 46) : 'Untitled note';
+  }
+
+  function noteWordCount(note) {
+    var body = String(note.body || '').trim();
+    return body ? body.split(/\s+/).length : 0;
+  }
+
+  function relativeTime(stamp) {
+    var diff = Date.now() - stamp;
+    if (diff < 45000) return 'just now';
+    var minutes = Math.round(diff / 60000);
+    if (minutes < 60) return minutes + (minutes === 1 ? ' min ago' : ' mins ago');
+    var hours = Math.round(minutes / 60);
+    if (hours < 24) return hours + (hours === 1 ? ' hour ago' : ' hours ago');
+    var days = Math.round(hours / 24);
+    if (days === 1) return 'yesterday';
+    if (days < 7) return days + ' days ago';
+    return new Date(stamp).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+  }
+
+  function noteMatches(note, q) {
+    if (!q) return true;
+    return (note.title + ' ' + note.body).toLowerCase().indexOf(q) !== -1;
+  }
+
+  function visibleNotes() {
+    var q = noteQuery.trim().toLowerCase();
+
+    var list = notes.filter(function (note) {
+      if (noteFilter === 'pinned' && !note.pinned) return false;
+      return noteMatches(note, q);
+    });
+
+    var copy = list.slice();
+    if (noteSort === 'created') {
+      copy.sort(function (a, b) { return b.createdAt - a.createdAt; });
+    } else if (noteSort === 'alpha') {
+      copy.sort(function (a, b) { return noteTitle(a).localeCompare(noteTitle(b)); });
+    } else {
+      copy.sort(function (a, b) { return b.updatedAt - a.updatedAt; });
+    }
+    // Pinned notes float to the top; Array#sort is stable, so ties keep order.
+    copy.sort(function (a, b) { return (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0); });
+    return copy;
+  }
+
+  function createNoteNode(note) {
+    var node = el.noteTemplate.content.firstElementChild.cloneNode(true);
+    node.dataset.id = note.id;
+    node.dataset.color = note.color;
+    node.classList.toggle('is-pinned', note.pinned);
+
+    var title = node.querySelector('.note__title');
+    title.textContent = noteTitle(note);
+    title.title = 'Double-click to edit this note';
+
+    node.querySelector('.note__body').textContent = note.body;
+
+    var pin = node.querySelector('.note__pin');
+    pin.setAttribute('aria-pressed', String(note.pinned));
+    pin.setAttribute('aria-label', note.pinned ? 'Unpin this note' : 'Pin this note');
+    pin.title = note.pinned ? 'Unpin this note' : 'Pin this note';
+
+    node.querySelector('.note__stamp').textContent = 'edited ' + relativeTime(note.updatedAt);
+
+    var words = noteWordCount(note);
+    node.querySelector('.note__count').textContent = words + (words === 1 ? ' word' : ' words');
+
+    return node;
+  }
+
+  function renderNotes() {
+    var visible = visibleNotes();
+
+    var frag = document.createDocumentFragment();
+    visible.forEach(function (note) { frag.appendChild(createNoteNode(note)); });
+    el.noteList.textContent = '';
+    el.noteList.appendChild(frag);
+
+    var pinned = notes.filter(function (note) { return note.pinned; }).length;
+    el.tabNotesCount.textContent = String(notes.length);
+
+    if (!notes.length) {
+      el.notesSummary.textContent = 'No notes yet';
+    } else {
+      el.notesSummary.textContent = notes.length + (notes.length === 1 ? ' note' : ' notes') +
+        (pinned ? ' · ' + pinned + ' pinned' : '');
+    }
+
+    renderNotesEmptyState(visible.length);
+  }
+
+  function renderNotesEmptyState(visibleCount) {
+    if (visibleCount > 0) {
+      el.notesEmpty.hidden = true;
+      return;
+    }
+
+    el.notesEmpty.hidden = false;
+
+    if (!notes.length) {
+      el.notesEmptyTitle.textContent = 'No notes yet';
+      el.notesEmptyText.textContent = 'Notes are for the scraps that are not tasks yet: sketches, links, half-formed ideas no one asked for.';
+    } else if (noteQuery.trim()) {
+      el.notesEmptyTitle.textContent = 'No notes match “' + noteQuery.trim() + '”';
+      el.notesEmptyText.textContent = 'Try another word, or clear the search box to see every note again.';
+    } else {
+      el.notesEmptyTitle.textContent = 'Nothing pinned yet';
+      el.notesEmptyText.textContent = 'Pin the notes you want to keep in sight — they float to the top of the pile.';
+    }
+  }
+  function noteColorValue() {
+    var checked = el.noteForm.querySelector('input[name="noteColor"]:checked');
+    return checked ? checked.value : 'yellow';
+  }
+
+  function addNote(event) {
+    if (event) event.preventDefault();
+
+    var title = el.noteTitle.value.trim().replace(/\s+/g, ' ');
+    var body = el.noteBody.value.replace(/\s+$/, '');
+
+    if (!title && !body.trim()) {
+      el.noteFormError.textContent = 'Write a title or a note — either one is fine.';
+      el.noteFormError.hidden = false;
+      el.noteBody.classList.add('is-invalid');
+      window.setTimeout(function () { el.noteBody.classList.remove('is-invalid'); }, 700);
+      return;
+    }
+
+    var stamp = Date.now();
+    notes.unshift({
+      id: uid(),
+      title: title.slice(0, MAX_NOTE_TITLE),
+      body: body.slice(0, MAX_NOTE_BODY),
+      color: noteColorValue(),
+      pinned: false,
+      createdAt: stamp,
+      updatedAt: stamp
+    });
+
+    el.noteFormError.hidden = true;
+    el.noteFormError.textContent = '';
+    el.noteForm.reset();
+    saveNotes();
+    renderNotes();
+    el.noteTitle.focus();
+    announce('Note added. ' + notes.length + (notes.length === 1 ? ' note saved.' : ' notes saved.'));
+  }
+
+  function toggleNotePin(id) {
+    var note = findNote(id);
+    if (!note) return;
+    note.pinned = !note.pinned;
+    saveNotes();
+    renderNotes();
+    announce('Note ' + (note.pinned ? 'pinned.' : 'unpinned.'));
+  }
+
+  function deleteNote(id) {
+    var index = findNoteIndex(id);
+    if (index === -1) return;
+
+    var note = notes.splice(index, 1)[0];
+    lastDeletedNote = { note: note, index: index };
+    saveNotes();
+
+    var node = noteNode(id);
+    var settled = false;
+    var finish = function () {
+      if (settled) return;
+      settled = true;
+      renderNotes();
+      showToast('Deleted note “' + shorten(noteTitle(note), 32) + '”', 'Undo', undoNoteDelete);
+    };
+
+    if (node && !reduceMotion()) {
+      node.classList.add('is-removing');
+      window.setTimeout(finish, 300);
+    } else {
+      finish();
+    }
+    announce('Note deleted.');
+  }
+
+  function undoNoteDelete() {
+    if (!lastDeletedNote) return;
+    var note = lastDeletedNote.note;
+    var index = Math.min(lastDeletedNote.index, notes.length);
+    lastDeletedNote = null;
+    notes.splice(index, 0, note);
+    saveNotes();
+    renderNotes();
+    announce('Note restored.');
+  }
+
+  function startNoteEditing(id) {
+    var node = noteNode(id);
+    var note = findNote(id);
+    if (!node || !note || node.querySelector('.note__editor')) return;
+
+    var chosen = note.color;
+    var editor = document.createElement('div');
+    editor.className = 'note__editor';
+
+    var titleInput = document.createElement('input');
+    titleInput.type = 'text';
+    titleInput.className = 'input';
+    titleInput.maxLength = MAX_NOTE_TITLE;
+    titleInput.value = note.title;
+    titleInput.placeholder = 'Title (optional)';
+    titleInput.setAttribute('aria-label', 'Note title');
+
+    var bodyArea = document.createElement('textarea');
+    bodyArea.className = 'input input--area';
+    bodyArea.rows = 6;
+    bodyArea.maxLength = MAX_NOTE_BODY;
+    bodyArea.value = note.body;
+    bodyArea.placeholder = 'Note text';
+    bodyArea.setAttribute('aria-label', 'Note text');
+
+    var colors = document.createElement('div');
+    colors.className = 'note__colors';
+    NOTE_COLORS.forEach(function (name) {
+      var dot = document.createElement('button');
+      dot.type = 'button';
+      dot.className = 'color-dot swatch__dot--' + name + (name === chosen ? ' is-active' : '');
+      dot.setAttribute('aria-label', 'Use ' + name + ' paper');
+      dot.setAttribute('aria-pressed', String(name === chosen));
+      dot.addEventListener('click', function () {
+        chosen = name;
+        Array.prototype.forEach.call(colors.children, function (child) {
+          var active = child === dot;
+          child.classList.toggle('is-active', active);
+          child.setAttribute('aria-pressed', String(active));
+        });
+      });
+      colors.appendChild(dot);
+    });
+
+    var row = document.createElement('div');
+    row.className = 'note__editor-row';
+
+    var saveButton = document.createElement('button');
+    saveButton.type = 'button';
+    saveButton.className = 'btn btn--primary';
+    saveButton.textContent = 'Save note';
+
+    var cancelButton = document.createElement('button');
+    cancelButton.type = 'button';
+    cancelButton.className = 'btn btn--ghost';
+    cancelButton.textContent = 'Cancel';
+
+    row.appendChild(saveButton);
+    row.appendChild(cancelButton);
+    editor.appendChild(titleInput);
+    editor.appendChild(bodyArea);
+    editor.appendChild(colors);
+    editor.appendChild(row);
+
+    node.textContent = '';
+    node.classList.add('is-editing');
+    node.appendChild(editor);
+    titleInput.focus();
+    titleInput.setSelectionRange(titleInput.value.length, titleInput.value.length);
+
+    var closed = false;
+    function close(commit) {
+      if (closed) return;
+      closed = true;
+
+      if (commit) {
+        var nextTitle = titleInput.value.trim().replace(/\s+/g, ' ');
+        var nextBody = bodyArea.value.replace(/\s+$/, '');
+        if (nextTitle || nextBody.trim()) {
+          note.title = nextTitle.slice(0, MAX_NOTE_TITLE);
+          note.body = nextBody.slice(0, MAX_NOTE_BODY);
+          note.color = chosen;
+          note.updatedAt = Date.now();
+          saveNotes();
+          announce('Note updated.');
+        }
+      }
+      renderNotes();
+      if (commit) {
+        var fresh = noteNode(id);
+        if (fresh) fresh.querySelector('.note__title').focus();
+      }
+    }
+
+    saveButton.addEventListener('click', function () { close(true); });
+    cancelButton.addEventListener('click', function () { close(false); });
+    editor.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        close(false);
+      } else if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault();
+        close(true);
+      }
+    });
+  }
+
+  /* ---------- tab switching ---------- */
+
+  function setView(view, options) {
+    options = options || {};
+    currentView = view === 'notes' ? 'notes' : 'tasks';
+
+    [el.tabTasks, el.tabNotes].forEach(function (tab) {
+      var active = tab.dataset.view === currentView;
+      tab.classList.toggle('is-active', active);
+      tab.setAttribute('aria-selected', String(active));
+      tab.tabIndex = active ? 0 : -1;
+    });
+
+    el.viewTasks.hidden = currentView !== 'tasks';
+    el.viewNotes.hidden = currentView !== 'notes';
+
+    try { window.localStorage.setItem(VIEW_KEY, currentView); } catch (err) { /* ignore */ }
+
+    if (options.focusTab) {
+      (currentView === 'notes' ? el.tabNotes : el.tabTasks).focus();
+    }
+    if (!options.silent) {
+      announce(currentView === 'notes' ? 'Notes tab.' : 'Tasks tab.');
+    }
+  }
+
+  function initView() {
+    var saved = null;
+    try { saved = window.localStorage.getItem(VIEW_KEY); } catch (err) { /* ignore */ }
+    setView(saved === 'notes' ? 'notes' : 'tasks', { silent: true });
+  }
+
+  function setNoteFilterButtons() {
+    var buttons = Array.prototype.slice.call(el.noteFilterGroup.querySelectorAll('[data-note-filter]'));
+    buttons.forEach(function (button) {
+      var active = button.dataset.noteFilter === noteFilter;
+      button.classList.toggle('is-active', active);
+      button.setAttribute('aria-pressed', String(active));
+    });
+  }
+
+  function noteListClick(event) {
+    var button = event.target.closest('button[data-action]');
+    if (!button) return;
+    var card = button.closest('.note');
+    if (!card) return;
+
+    var id = card.dataset.id;
+    var action = button.dataset.action;
+    if (action === 'pin-note') toggleNotePin(id);
+    else if (action === 'delete-note') deleteNote(id);
+    else if (action === 'edit-note') startNoteEditing(id);
+  }
+
+  function noteListDblClick(event) {
+    var title = event.target.closest('.note__title');
+    var card = title && title.closest('.note');
+    if (card) startNoteEditing(card.dataset.id);
+  }
+
+  function noteListKeydown(event) {
+    var title = event.target.closest('.note__title');
+    var card = title && title.closest('.note');
+    if (!card) return;
+
+    if (event.key === 'Enter' || event.key === 'F2') {
+      event.preventDefault();
+      startNoteEditing(card.dataset.id);
+    } else if (event.key === 'Delete') {
+      event.preventDefault();
+      deleteNote(card.dataset.id);
+    }
+  }
+
   /* ---------- wiring ---------- */
+
 
   function bindEvents() {
     el.form.addEventListener('submit', addTask);
@@ -801,22 +1282,82 @@
 
     el.clearDone.addEventListener('click', clearCompleted);
 
+    /* notes */
+    el.noteForm.addEventListener('submit', addNote);
+
+    el.noteTitle.addEventListener('input', function () {
+      if (!el.noteFormError.hidden) {
+        el.noteFormError.hidden = true;
+        el.noteFormError.textContent = '';
+        el.noteBody.classList.remove('is-invalid');
+      }
+    });
+
+    el.noteBody.addEventListener('keydown', function (event) {
+      if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault();
+        addNote();
+      }
+    });
+
+    el.noteSearch.addEventListener('input', function () {
+      noteQuery = el.noteSearch.value;
+      renderNotes();
+    });
+
+    el.noteFilterGroup.addEventListener('click', function (event) {
+      var button = event.target.closest('[data-note-filter]');
+      if (!button) return;
+      noteFilter = button.dataset.noteFilter;
+      setNoteFilterButtons();
+      renderNotes();
+    });
+
+    el.noteSort.addEventListener('change', function () {
+      noteSort = el.noteSort.value;
+      renderNotes();
+      announce('Notes sorted by ' + el.noteSort.options[el.noteSort.selectedIndex].text + '.');
+    });
+
+    el.noteList.addEventListener('click', noteListClick);
+    el.noteList.addEventListener('dblclick', noteListDblClick);
+    el.noteList.addEventListener('keydown', noteListKeydown);
+
+    /* tabs */
+    el.tabbar.addEventListener('click', function (event) {
+      var tab = event.target.closest('[data-view]');
+      if (tab) setView(tab.dataset.view);
+    });
+
+    el.tabbar.addEventListener('keydown', function (event) {
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+      event.preventDefault();
+      setView(currentView === 'tasks' ? 'notes' : 'tasks', { focusTab: true });
+    });
+
     document.addEventListener('keydown', function (event) {
       var node = event.target;
       var typing = node instanceof Element &&
         (node.tagName === 'INPUT' || node.tagName === 'SELECT' ||
          node.tagName === 'TEXTAREA' || node.isContentEditable);
 
+      var activeSearch = currentView === 'notes' ? el.noteSearch : el.search;
+
       if (event.key === '/' && !typing && !event.ctrlKey && !event.metaKey) {
         event.preventDefault();
-        el.search.focus();
-      } else if (event.key === 'Escape' && node === el.search) {
-        if (el.search.value) {
-          el.search.value = '';
-          query = '';
-          render();
+        activeSearch.focus();
+      } else if (event.key === 'Escape' && node === activeSearch) {
+        if (activeSearch.value) {
+          activeSearch.value = '';
+          if (currentView === 'notes') {
+            noteQuery = '';
+            renderNotes();
+          } else {
+            query = '';
+            render();
+          }
         } else {
-          el.search.blur();
+          activeSearch.blur();
         }
       }
     });
@@ -827,9 +1368,15 @@
     }, 30000);
 
     window.addEventListener('storage', function (event) {
-      if (event.key !== STORAGE_KEY) return;
-      load();
-      render();
+      if (event.key === STORAGE_KEY) {
+        load();
+        render();
+      } else if (event.key === NOTES_KEY) {
+        loadNotes();
+        renderNotes();
+      } else if (event.key === VIEW_KEY && (event.newValue === 'notes' || event.newValue === 'tasks')) {
+        setView(event.newValue, { silent: true });
+      }
     });
   }
 
@@ -839,9 +1386,13 @@
     initTheme();
     el.todayLabel.textContent = shortDate(new Date());
     load();
+    loadNotes();
+    initView();
     bindEvents();
     render();
-    el.title.focus();
+    renderNotes();
+    if (currentView === 'notes') el.noteTitle.focus();
+    else el.title.focus();
   }
 
   init();

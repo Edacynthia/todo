@@ -31,6 +31,23 @@
   </header>
 
   <main class="layout" id="main">
+    <div class="tabbar-wrap">
+      <div class="tabbar" id="tabbar" role="tablist" aria-label="Tasks and notes">
+        <button class="tab is-active" id="tabTasks" type="button" role="tab" aria-selected="true"
+                aria-controls="viewTasks" data-view="tasks">
+          <span class="tab__glyph" aria-hidden="true">&#9745;</span> Tasks
+          <span class="tab__count" id="tabTasksCount" title="Open tasks">0</span>
+        </button>
+        <button class="tab" id="tabNotes" type="button" role="tab" aria-selected="false"
+                aria-controls="viewNotes" data-view="notes" tabindex="-1">
+          <span class="tab__glyph" aria-hidden="true">&#9733;</span> Notes
+          <span class="tab__count" id="tabNotesCount" title="Saved notes">0</span>
+        </button>
+      </div>
+      <p class="tabbar__hint">Press <kbd>&#8592;</kbd><kbd>&#8594;</kbd> to switch tabs &middot; <kbd>/</kbd> to search this tab</p>
+    </div>
+
+    <div class="view" id="viewTasks" role="tabpanel" aria-labelledby="tabTasks">
     <!-- ============ Compose ============ -->
     <section class="panel panel--compose" aria-labelledby="composeTitle">
       <h2 class="panel__title" id="composeTitle"><span class="panel__glyph" aria-hidden="true">&#9998;</span> Add a task</h2>
@@ -130,6 +147,106 @@
         <p class="empty__text" id="emptyText">Add your first task on the left and watch this page fill up with tiny wins.</p>
       </div>
     </section>
+    </div>
+
+    <!-- ============ Notes view ============ -->
+    <div class="view" id="viewNotes" role="tabpanel" aria-labelledby="tabNotes" hidden>
+      <section class="panel panel--compose" aria-labelledby="noteComposeTitle">
+        <h2 class="panel__title" id="noteComposeTitle"><span class="panel__glyph" aria-hidden="true">&#9998;</span> New note</h2>
+
+        <form class="compose" id="noteForm" novalidate autocomplete="off">
+          <div class="field">
+            <label class="field__label" for="noteTitle">Title <span class="field__hint">optional</span></label>
+            <input class="input" id="noteTitle" type="text" maxlength="90"
+                   placeholder="e.g. Palette ideas for the poster" data-testid="test-note-title-input" />
+          </div>
+
+          <div class="field">
+            <label class="field__label" for="noteBody">Note <span class="field__hint">line breaks are kept</span></label>
+            <textarea class="input input--area" id="noteBody" rows="6" maxlength="2000"
+                      placeholder="Jot it down before it evaporates&hellip;" data-testid="test-note-body-input"></textarea>
+          </div>
+
+          <fieldset class="swatches">
+            <legend class="field__label">Paper colour</legend>
+            <label class="swatch" title="Yellow">
+              <input type="radio" name="noteColor" value="yellow" checked />
+              <span class="swatch__dot swatch__dot--yellow"></span><span class="sr-only">Yellow paper</span>
+            </label>
+            <label class="swatch" title="Blue">
+              <input type="radio" name="noteColor" value="blue" />
+              <span class="swatch__dot swatch__dot--blue"></span><span class="sr-only">Blue paper</span>
+            </label>
+            <label class="swatch" title="Red">
+              <input type="radio" name="noteColor" value="red" />
+              <span class="swatch__dot swatch__dot--red"></span><span class="sr-only">Red paper</span>
+            </label>
+            <label class="swatch" title="Mint">
+              <input type="radio" name="noteColor" value="mint" />
+              <span class="swatch__dot swatch__dot--mint"></span><span class="sr-only">Mint paper</span>
+            </label>
+            <label class="swatch" title="Violet">
+              <input type="radio" name="noteColor" value="violet" />
+              <span class="swatch__dot swatch__dot--violet"></span><span class="sr-only">Violet paper</span>
+            </label>
+          </fieldset>
+
+          <p class="form-error" id="noteFormError" role="alert" hidden></p>
+
+          <button class="btn btn--primary" type="submit" data-testid="test-note-submit">
+            <span class="btn__glyph" aria-hidden="true">&#65291;</span> Add note
+          </button>
+        </form>
+
+        <ul class="shortcuts">
+          <li><kbd>Ctrl</kbd> + <kbd>Enter</kbd> save note</li>
+          <li><kbd>Esc</kbd> cancel edit</li>
+          <li><kbd>/</kbd> jump to search</li>
+        </ul>
+      </section>
+
+      <section class="panel panel--list" aria-labelledby="notesListTitle">
+        <div class="listhead">
+          <div class="listhead__text">
+            <h2 class="panel__title" id="notesListTitle"><span class="panel__glyph" aria-hidden="true">&#9733;</span> Your notes</h2>
+            <p class="listhead__sub" id="notesSummary">No notes yet</p>
+          </div>
+        </div>
+
+        <div class="toolbar">
+          <div class="search">
+            <span class="search__glyph" aria-hidden="true">&#9906;</span>
+            <label class="sr-only" for="noteSearch">Search notes by title or text</label>
+            <input class="input input--search" id="noteSearch" type="search" placeholder="Search notes&hellip;" />
+          </div>
+
+          <div class="segmented" id="noteFilterGroup" role="group" aria-label="Filter notes">
+            <button class="segmented__btn is-active" type="button" data-note-filter="all" aria-pressed="true">All</button>
+            <button class="segmented__btn" type="button" data-note-filter="pinned" aria-pressed="false">Pinned</button>
+          </div>
+
+          <div class="toolbar__right">
+            <label class="sr-only" for="noteSortSelect">Sort notes</label>
+            <select class="input input--compact" id="noteSortSelect">
+              <option value="updated">Recently edited</option>
+              <option value="created">Newest first</option>
+              <option value="alpha">A &rarr; Z</option>
+            </select>
+          </div>
+        </div>
+
+        <ul class="notes" id="noteList" aria-label="Your notes"></ul>
+
+        <div class="empty" id="notesEmpty" hidden>
+          <div class="empty__art" aria-hidden="true">
+            <span class="empty__sun"></span>
+            <span class="empty__line"></span>
+          </div>
+          <h3 class="empty__title" id="notesEmptyTitle">No notes yet</h3>
+          <p class="empty__text" id="notesEmptyText">Notes are for the scraps that are not tasks yet: sketches, links, half-formed ideas no one asked for.</p>
+        </div>
+      </section>
+    </div>
   </main>
 
   <footer class="footer">
@@ -176,8 +293,29 @@
     </li>
   </template>
 
-  <script src="script.js"></script>
+  <template id="noteTemplate">
+    <li class="note" data-color="yellow" data-testid="test-note-card">
+      <div class="note__head">
+        <h3 class="note__title" data-testid="test-note-title" tabindex="0"></h3>
+        <button class="icon-btn icon-btn--sm note__pin" type="button" data-action="pin-note"
+                data-testid="test-note-pin" title="Pin this note" aria-pressed="false">&#10022;</button>
+      </div>
 
-  </main>
+      <p class="note__body" data-testid="test-note-body"></p>
+
+      <div class="note__foot">
+        <span class="chip note__stamp" data-testid="test-note-stamp"></span>
+        <span class="note__count" data-testid="test-note-count"></span>
+        <div class="note__actions">
+          <button class="icon-btn icon-btn--sm" type="button" data-action="edit-note"
+                  data-testid="test-note-edit-button" title="Edit note" aria-label="Edit note">&#9998;</button>
+          <button class="icon-btn icon-btn--sm" type="button" data-action="delete-note"
+                  data-testid="test-note-delete-button" title="Delete note" aria-label="Delete note">&#10005;</button>
+        </div>
+      </div>
+    </li>
+  </template>
+
+  <script src="script.js"></script>
 </body>
 </html>
