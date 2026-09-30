@@ -1,0 +1,13 @@
+# Dev tooling output
+tests/node_modules/
+tests/harness-report.txt
+tests/lint-report.txt
+
+# Editors / OS noise
+.DS_Store
+Thumbs.db
+*.log
+
+# Guard: on Windows a bare `nul` redirect in a POSIX shell can create a real file
+# named "nul", which git can never index. Ignoring it keeps `git add .` working.
+nul

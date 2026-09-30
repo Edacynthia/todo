@@ -41,6 +41,7 @@
     emptyState: document.getElementById('emptyState'),
     emptyTitle: document.getElementById('emptyTitle'),
     emptyText: document.getElementById('emptyText'),
+    sampleBtn: document.getElementById('sampleBtn'),
     themeToggle: document.getElementById('themeToggle'),
     themeGlyph: document.getElementById('themeGlyph'),
     themeText: document.getElementById('themeText'),
@@ -232,6 +233,15 @@
 
   function shortDate(date) {
     return date.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
+  }
+
+  /** "YYYY-MM-DD" for today plus `days`, used by the sample data. */
+  function offsetISO(days) {
+    var d = new Date();
+    d.setHours(12, 0, 0, 0);
+    d.setDate(d.getDate() + days);
+    var pad = function (n) { return String(n).padStart(2, '0'); };
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
   }
   /* ---------- selectors & sorting ---------- */
 
@@ -835,6 +845,91 @@
     else applyTheme(prefersInk ? 'ink' : 'paper');
   }
 
+  /* ---------- sample data ---------- */
+
+  var SAMPLE_TASKS = [
+    { title: 'Sketch the poster layout', priority: 'high', dueOffset: 0, tags: ['design', 'print'] },
+    { title: 'Mix the second riso ink layer', priority: 'medium', dueOffset: 2, tags: ['print', 'studio'] },
+    { title: 'Send the invoice to Ope', priority: 'low', dueOffset: -1, tags: ['admin'] },
+    { title: 'Trim the zine proofs', priority: 'medium', dueOffset: 5, tags: ['print'] },
+    { title: 'Photograph the finished prints', priority: 'low', dueOffset: null, tags: ['studio'], done: true }
+  ];
+
+  var SAMPLE_NOTES = [
+    {
+      title: 'Ink notes',
+      body: 'Riso blue + fluorescent pink is the strongest pair so far.\nOverprint shifts to violet — test it on the poster next.',
+      color: 'blue',
+      pinned: true
+    },
+    {
+      title: 'Colour swatches',
+      body: 'cream #fbf4e8\nriso blue #1f6feb\nposter red #ef4a2b\nmint #17ab8a\nviolet #7b5bf0',
+      color: 'violet',
+      pinned: false
+    },
+    {
+      title: 'Client call',
+      body: 'Ask whether the launch stays on the 12th.\nOnly two revision rounds are included — mention that early.',
+      color: 'yellow',
+      pinned: false
+    }
+  ];
+
+  /** Adds the sample tasks/notes that are not already present (never duplicates). */
+  function loadSampleData() {
+    var stamp = Date.now();
+    var addedTasks = 0;
+    var addedNotes = 0;
+
+    var existingTaskTitles = tasks.map(function (task) { return task.title; });
+    SAMPLE_TASKS.forEach(function (sample, index) {
+      if (existingTaskTitles.indexOf(sample.title) !== -1) return;
+      tasks.push({
+        id: uid(),
+        title: sample.title,
+        done: Boolean(sample.done),
+        priority: sample.priority,
+        due: sample.dueOffset === null || sample.dueOffset === undefined ? null : offsetISO(sample.dueOffset),
+        tags: sample.tags.slice(),
+        createdAt: stamp - index * 60000,
+        completedAt: sample.done ? stamp : null
+      });
+      addedTasks++;
+    });
+
+    var existingNoteTitles = notes.map(function (note) { return note.title; });
+    SAMPLE_NOTES.forEach(function (sample) {
+      if (existingNoteTitles.indexOf(sample.title) !== -1) return;
+      notes.unshift({
+        id: uid(),
+        title: sample.title,
+        body: sample.body,
+        color: sample.color,
+        pinned: Boolean(sample.pinned),
+        createdAt: stamp,
+        updatedAt: stamp
+      });
+      addedNotes++;
+    });
+
+    if (!addedTasks && !addedNotes) {
+      showToast('Sample data is already loaded', null, null);
+      announce('Sample data is already loaded.');
+      return;
+    }
+
+    save();
+    saveNotes();
+    render();
+    renderNotes();
+
+    var message = 'Loaded ' + addedTasks + (addedTasks === 1 ? ' sample task' : ' sample tasks') +
+      ' and ' + addedNotes + (addedNotes === 1 ? ' sample note' : ' sample notes');
+    showToast(message, null, null);
+    announce(message + '.');
+  }
+
   /* ============================================================
      Notes tab
      ============================================================ */
@@ -1281,6 +1376,7 @@
     });
 
     el.clearDone.addEventListener('click', clearCompleted);
+    el.sampleBtn.addEventListener('click', loadSampleData);
 
     /* notes */
     el.noteForm.addEventListener('submit', addNote);
