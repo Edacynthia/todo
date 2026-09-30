@@ -1,0 +1,14 @@
+{
+  "name": "riso-todo-tests",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Dev-only checks for Riso Todo. The app itself has zero dependencies; jsdom is only used by these tests.",
+  "scripts": {
+    "test": "node lint.js && node harness.js",
+    "test:harness": "node harness.js",
+    "test:lint": "node lint.js"
+  },
+  "devDependencies": {
+    "jsdom": "^29.1.1"
+  }
+}
